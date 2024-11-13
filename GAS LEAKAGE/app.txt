@@ -1,0 +1,104 @@
+const char* index_html() {
+  return R"rawliteral(
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Gas Level Monitoring</title>
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          text-align: center;
+          background-color: #f4f4f4;
+          margin: 0;
+          padding: 20px;
+        }
+
+        h1 {
+          color: #333;
+        }
+
+        .tank-container {
+          display: inline-block;
+          margin-top: 20px;
+        }
+
+        .tank {
+          width: 200px;
+          height: 300px;
+          border: 5px solid #000;
+          border-radius: 10px;
+          position: relative;
+          background-color: #e0e0e0;
+          overflow: hidden;
+        }
+
+        .gas {
+          position: absolute;
+          bottom: 0;
+          width: 100%;
+          transition: height 0.5s ease, background-color 0.5s ease; /* Smooth gas level and color transition */
+          background-color: rgba(0, 0, 255, 0.1); /* Light blue color at the start */
+        }
+
+        .level-label {
+          margin-top: 10px;
+          font-size: 18px;
+          font-weight: bold;
+          color: #333;
+        }
+
+        .footer {
+          position: fixed;
+          left: 0;
+          bottom: 50%;
+          transform: rotate(-90deg);
+          transform-origin: left bottom;
+          font-size: 14px;
+          color: #666;
+          font-weight: bold;
+        }
+
+        .footer a {
+          color: #666;
+          text-decoration: none;
+        }
+      </style>
+    </head>
+    <body>
+      <h1>Gas Level Monitoring</h1>
+
+      <div class="tank-container">
+        <div class="tank">
+          <div id="gas" class="gas" style="height: 50%;"></div>
+        </div>
+        <div class="level-label">Gas Level: <span id="level-text">50</span>%</div>
+      </div>
+
+      <h2>
+        Powered by <a href="https://afm4tech.com" target="_blank">AFM4tech || afm4tech.com</a>
+      </h2>
+
+      <script>
+        var ws = new WebSocket('ws://' + window.location.hostname + ':81');
+        ws.onmessage = function (event) {
+          var level = parseInt(event.data);
+          var tankHeight = 300;  // Tank height in px
+          var gasHeight = Math.max(0, Math.min(tankHeight, (tankHeight * level / 1023))); // Adjust based on gas level (max 1023 for 10-bit ADC)
+
+          // Update gas height visually
+          document.getElementById('gas').style.height = gasHeight + 'px';  
+          
+          // Update percentage display
+          document.getElementById('level-text').textContent = Math.floor((level / 1023) * 100);  
+
+          // Change gas color intensity based on level (darker blue as gas level increases)
+          var blueIntensity = Math.floor((level / 1023) * 255);
+          document.getElementById('gas').style.backgroundColor = 'rgba(0, 0, 255, ' + (blueIntensity / 255) + ')'; // From light blue to full blue
+        };
+      </script>
+    </body>
+    </html>
+  )rawliteral";
+}

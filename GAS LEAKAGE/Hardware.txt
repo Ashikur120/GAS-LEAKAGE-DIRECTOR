@@ -1,0 +1,178 @@
+#include <ESP8266WiFi.h>
+#include <ESPAsyncWebServer.h>
+#include <WebSocketsServer.h>
+#include <Wire.h> 
+
+#define GAS_SENSOR_PIN A0  // Define the analog input pin for the gas sensor
+#define PUMP_PIN  13 // Define a GPIO pin for the pump control
+#define buz 15
+
+
+AsyncWebServer server(80);
+WebSocketsServer webSocket = WebSocketsServer(81);
+
+const char* ssid = "GasLevelAP";
+const char* password = "12345678";
+
+unsigned int gasLevel = 0;
+const unsigned int maxGasLevel = 1023; // Max value from gas sensor (assuming 10-bit ADC)
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(PUMP_PIN, OUTPUT);
+  digitalWrite(PUMP_PIN, LOW); // Ensure pump is off at startup
+  pinMode(buz, OUTPUT);
+  digitalWrite(buz, LOW); // Ensure buzzer is off at startup
+
+
+  // Start soft AP
+  WiFi.softAP(ssid, password);
+  Serial.println("AP started");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.softAPIP());
+
+  // Serve the HTML page with WebSocket
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(200, "text/html", index_html());
+  });
+
+  // WebSocket event handler
+  webSocket.begin();
+  webSocket.onEvent(onWebSocketEvent);
+
+  // Start server
+  server.begin();
+  Serial.println("HTTP server started");
+
+
+}
+
+void loop() {
+  // Continuously handle WebSocket communication
+  webSocket.loop();
+
+  // Measure gas level
+  delay(1000); // Adjust delay based on how frequently you want to measure the level
+  measureGasLevel();
+}
+
+// Measure the gas level using the sensor
+void measureGasLevel() {
+  // Read the analog value from the gas sensor
+  gasLevel = analogRead(GAS_SENSOR_PIN);
+  Serial.println(gasLevel);
+  // Send gas level to all WebSocket clients
+  String level = String(gasLevel);
+  webSocket.broadcastTXT(level);
+
+
+}
+
+// Handle WebSocket events
+void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length) {
+  if(type == WStype_TEXT) {
+    // Handle incoming text (if needed)
+  }
+} 
+
+const char* index_html() {
+  return R"rawliteral(
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Gas Level Monitoring</title>
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          text-align: center;
+          background-color: #f4f4f4;
+          margin: 0;
+          padding: 20px;
+        }
+
+        h1 {
+          color: #333;
+        }
+
+        .tank-container {
+          display: inline-block;
+          margin-top: 20px;
+        }
+
+        .tank {
+          width: 200px;
+          height: 300px;
+          border: 5px solid #000;
+          border-radius: 10px;
+          position: relative;
+          background-color: #e0e0e0;
+          overflow: hidden;
+        }
+
+        .gas {
+          position: absolute;
+          bottom: 0;
+          width: 100%;
+          transition: height 0.5s ease, background-color 0.5s ease; /* Smooth gas level and color transition */
+          background-color: rgba(0, 0, 255, 0.1); /* Light blue color at the start */
+        }
+
+        .level-label {
+          margin-top: 10px;
+          font-size: 18px;
+          font-weight: bold;
+          color: #333;
+        }
+
+        .footer {
+          position: fixed;
+          left: 0;
+          bottom: 50%;
+          transform: rotate(-90deg);
+          transform-origin: left bottom;
+          font-size: 14px;
+          color: #666;
+          font-weight: bold;
+        }
+
+        .footer a {
+          color: #666;
+          text-decoration: none;
+        }
+      </style>
+    </head>
+    <body>
+      <h1>Gas Level Monitoring</h1>
+
+      <div class="tank-container">
+        <div class="tank">
+          <div id="gas" class="gas" style="height: 50%;"></div>
+        </div>
+        <div class="level-label">Gas Level: <span id="level-text">50</span>%</div>
+      </div>
+
+
+      <script>
+        var ws = new WebSocket('ws://' + window.location.hostname + ':81');
+        ws.onmessage = function (event) {
+          var level = parseInt(event.data);
+          var tankHeight = 300;  // Tank height in px
+          var gasHeight = Math.max(0, Math.min(tankHeight, (tankHeight * level / 1023))); // Adjust based on gas level (max 1023 for 10-bit ADC)
+
+          // Update gas height visually
+          document.getElementById('gas').style.height = gasHeight + 'px';  
+          
+          // Update percentage display
+          document.getElementById('level-text').textContent = Math.floor((level / 1023) * 100);  
+
+          // Change gas color intensity based on level (darker blue as gas level increases)
+          var blueIntensity = Math.floor((level / 1023) * 255);
+          document.getElementById('gas').style.backgroundColor = 'rgba(0, 0, 255, ' + (blueIntensity / 255) + ')'; // From light blue to full blue
+        };
+      </script>
+    </body>
+    </html>
+  )rawliteral";
+}
